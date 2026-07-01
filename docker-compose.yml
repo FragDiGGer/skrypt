@@ -1,0 +1,33 @@
+# Uruchamia serwis wizyjny dartscore (Python/FastAPI) jako osobny kontener.
+# Aplikacja Node.js (Twoja) woła go po HTTP/WS pod adresem http://dartscore:8000
+# (wewnątrz sieci compose) lub http://localhost:8000 (z hosta).
+#
+# Start:  docker compose up --build
+services:
+  dartscore:
+    build: .
+    image: dartscore:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      # Trwały plik kalibracji — liczysz raz, serwis wczytuje przy starcie.
+      - dartscore-data:/data
+      # Podmiana geometrii/konfiguracji bez przebudowy obrazu.
+      - ./config:/app/config:ro
+    environment:
+      DARTSCORE_CALIBRATION: /data/calibration.json
+    restart: unless-stopped
+
+  # --- PRZYKŁAD: tu dołącz swoją usługę Node.js -----------------------------
+  # node-app:
+  #   build: ./path-do-twojej-apki-node
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     # Klient Node (integration/node/dartsClient.js) czyta ten adres.
+  #     DARTS_SERVICE_URL: http://dartscore:8000
+  #   depends_on:
+  #     - dartscore
+
+volumes:
+  dartscore-data:

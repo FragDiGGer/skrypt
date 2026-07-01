@@ -125,6 +125,17 @@ Uruchom serwis wizyjny (Python) obok swojego backendu:
 uvicorn service.api:app --host 0.0.0.0 --port 8000
 ```
 
+Albo przez Docker (serwis jako osobny kontener obok apki Node):
+
+```bash
+docker compose up --build      # http://localhost:8000
+```
+
+Gotowy klient dla Node.js jest w **`integration/node/dartsClient.js`**
+(funkcje `calibrate`, `scoreThrow`, `subscribeHits`) — szczegóły w
+`integration/node/README.md`. **To są pliki do podesłania Claude Code**, gdy
+wpinasz moduł w swoją aplikację Node.
+
 Backend Node/JS woła endpointy (obrazy jako base64 w JSON):
 
 | Metoda | Ścieżka                | Wejście                          | Wyjście                     |

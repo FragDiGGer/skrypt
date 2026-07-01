@@ -7,3 +7,5 @@ venv/
 # Wygenerowany plik kalibracji (tworzony przez serwis / kalibrację).
 calibration.json
 config/cameras.yaml
+node_modules/
+package-lock.json
