@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dartscore"
+version = "0.1.0"
+description = "Niezależny moduł detekcji i punktacji tarczy dart z 3 kamer (kalibracja przez OCR sektora 20 + fuzja pozycji lotki)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "FragDiGGer" }]
+dependencies = [
+    "numpy>=1.24",
+    "opencv-python>=4.8",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# Warstwa transportu (serwis HTTP/WebSocket wołany przez backend Node/JS).
+api = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.6",
+    "python-multipart>=0.0.9",
+]
+# Opcjonalny backend OCR oparty o Tesseract (wymaga tesseract w systemie).
+ocr-tesseract = ["pytesseract>=0.3.10"]
+# Narzędzia deweloperskie / testy.
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+include = ["dartscore*", "service*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

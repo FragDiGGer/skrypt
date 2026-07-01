@@ -1,0 +1,30 @@
+# =============================================================================
+#  Geometria tarczy dart (standard bristle, wymiary WDF/BDO) + tolerancje.
+#  To jest JEDYNE źródło prawdy dla wymiarów — kod NIE zawiera "magic numbers".
+#  Wszystkie promienie w milimetrach, liczone od środka bullseye.
+# =============================================================================
+
+# Kolejność sektorów zgodnie z ruchem wskazówek zegara, zaczynając od 20 na
+# górze tarczy. Indeks 0 = sektor pod kątem 0° (środek klina wycelowany w górę).
+sector_order: [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5]
+
+# Każdy sektor to klin 18°. sector20_offset_deg to korekta orientacji wyznaczona
+# podczas kalibracji (kąt środka wykrytej cyfry "20" względem pionu). Dla idealnie
+# ustawionej tarczy = 0. Wartość jest nadpisywana przez wynik kalibracji.
+sector_span_deg: 18.0
+sector20_offset_deg: 0.0
+
+# Promienie granic pierścieni (mm). Konwencja przedziałów: [dolna, górna).
+rings:
+  bull: 6.35          # 50 pkt: 0 .. bull
+  outer_bull: 15.9    # 25 pkt: bull .. outer_bull
+  triple_inner: 99.0  # inner single: outer_bull .. triple_inner
+  triple_outer: 107.0 # triple (x3):  triple_inner .. triple_outer
+  double_inner: 162.0 # outer single: triple_outer .. double_inner
+  double_outer: 170.0 # double (x2):  double_inner .. double_outer; poza => miss
+
+# Tolerancje używane wyłącznie do metryki "bliskość granicy" (nie zmieniają
+# wyniku punktacji — służą do oznaczania trafień niepewnych na krawędziach).
+tolerances:
+  boundary_angle_deg: 1.5   # jak blisko granicy sektora (± stopnie) uznać za sporne
+  boundary_radius_mm: 2.0   # jak blisko granicy pierścienia (± mm) uznać za sporne

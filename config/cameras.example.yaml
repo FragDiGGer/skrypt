@@ -1,0 +1,29 @@
+# =============================================================================
+#  Szablon konfiguracji 3 kamer (ustawienie boczne, ~120° wokół tarczy).
+#  Skopiuj do cameras.yaml i uzupełnij realnymi wartościami dla swojego sprzętu.
+#  Homografie (obraz -> płaszczyzna tarczy w mm) wyznacza kalibracja i zapisuje
+#  do pliku kalibracji (patrz dartscore/calibration/store.py) — tutaj podajemy
+#  tylko metadane sprzętowe.
+# =============================================================================
+
+cameras:
+  - id: "cam0"
+    index: 0            # indeks urządzenia / ścieżka strumienia
+    resolution: [1280, 720]
+    # Przybliżony kąt azymutu kamery wokół tarczy (stopnie, 0 = od dołu, CW).
+    # Wykorzystywany jako wskazówka przy fuzji (kierunek, z którego patrzy kamera).
+    azimuth_deg: 0.0
+
+  - id: "cam1"
+    index: 1
+    resolution: [1280, 720]
+    azimuth_deg: 120.0
+
+  - id: "cam2"
+    index: 2
+    resolution: [1280, 720]
+    azimuth_deg: 240.0
+
+# Minimalna liczba kamer, które muszą wykryć grot, aby uznać trafienie za pewne.
+# Poniżej tej wartości pipeline zgłasza AmbiguousHit (lub zwraca niskie confidence).
+min_cameras_for_hit: 2
