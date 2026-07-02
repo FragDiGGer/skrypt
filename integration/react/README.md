@@ -84,6 +84,19 @@ function Scoreboard() {
 }
 ```
 
+## Gotowy komponent (opcjonalnie)
+
+`DartsPanel.tsx` to samowystarczalny przykład: podgląd 3 kamer, przycisk
+kalibracji, „klatka PRZED" + „Policz rzut" oraz tablica trafień na żywo
+(`useDartHits`). Skopiuj go i podmień style/logikę pod siebie.
+
+```tsx
+import { DartsPanel } from "./lib/DartsPanel";
+export default function App() {
+  return <DartsPanel />;   // albo <DartsPanel deviceIds={[id0, id1, id2]} />
+}
+```
+
 ## 3. Błędy
 
 Metody rzucają `DartsServiceError` z polem `.status`:
