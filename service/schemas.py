@@ -22,6 +22,21 @@ class ThrowRequest(BaseModel):
     after: dict[str, str] = Field(..., description="Klatki po trafieniu (camera_id -> base64)")
 
 
+class CameraPoints(BaseModel):
+    """Punkty odniesienia jednej kamery (piksele obrazu natywnego)."""
+
+    image_size: tuple[int, int] = Field(..., description="[szerokość, wysokość] klatki w px")
+    points: dict[str, tuple[float, float]] = Field(
+        ..., description="Mapa etykieta -> [x_px, y_px]; domyślnie double 20/6/3/11"
+    )
+
+
+class PointsCalibrationRequest(BaseModel):
+    """Kalibracja perspektywiczna z klikanych punktów (mapa camera_id -> punkty)."""
+
+    cameras: dict[str, CameraPoints]
+
+
 class Position(BaseModel):
     angle_deg: float
     radius_mm: float

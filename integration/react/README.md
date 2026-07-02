@@ -23,12 +23,19 @@ app.include_router(create_darts_router(prefix="/darts"))
 
 Dostajesz od razu:
 
-| Metoda | Ścieżka                    | Wejście                          | Wyjście            |
-|--------|----------------------------|----------------------------------|--------------------|
-| POST   | `/darts/calibrate`         | `{frames: {camId: base64}}`      | status kalibracji  |
-| GET    | `/darts/calibration/status`| —                                | stan kalibracji    |
-| POST   | `/darts/score-throw`       | `{before:{...}, after:{...}}`    | `Hit` JSON         |
-| WS     | `/darts/ws/hits`           | (utrzymywane połączenie)         | strumień `Hit`     |
+| Metoda | Ścieżka                     | Wejście                                    | Wyjście            |
+|--------|-----------------------------|--------------------------------------------|--------------------|
+| POST   | `/darts/calibrate-points`   | `{cameras:{camId:{image_size,points}}}`   | status kalibracji  |
+| POST   | `/darts/calibrate`          | `{frames: {camId: base64}}` (auto, ~czoło) | status kalibracji  |
+| GET    | `/darts/calibration/status` | —                                          | stan kalibracji    |
+| POST   | `/darts/score-throw`        | `{before:{...}, after:{...}}`             | `Hit` JSON         |
+| WS     | `/darts/ws/hits`            | (utrzymywane połączenie)                   | strumień `Hit`     |
+
+**Kalibracja perspektywiczna (zalecana dla realnych kamer bocznych):**
+`/darts/calibrate-points` — dla każdej kamery podajesz 4 punkty (piksele) =
+zewnętrzna krawędź double sektorów **20, 6, 3, 11**. Moduł liczy homografię
+perspektywiczną (kod: `dartscore/calibration/point_calibrator.py`). Auto
+`/darts/calibrate` (OCR „20") działa dobrze tylko dla widoku ~czołowego/syntetyku.
 
 Instalacja zależności modułu w środowisku backendu:
 `pip install -e .[api]` (w produkcji bez GUI użyj `opencv-python-headless`).
@@ -36,36 +43,44 @@ Instalacja zależności modułu w środowisku backendu:
 Ścieżkę pliku kalibracji ustawia `DARTSCORE_CALIBRATION` (domyślnie
 `calibration.json`). Kalibrujesz raz — router wczytuje ją przy starcie.
 
+> Uwaga o adresie: klient używa ścieżek względem `baseUrl`. Jeśli wpinasz router
+> z `prefix="/darts"`, ustaw `VITE_DARTS_URL=http://host:port/darts`.
+
 > Alternatywa (jeśli wolisz osobny proces): uruchom `uvicorn service.api:app`
 > i wskaż front na ten adres. Ten wariant ma już włączony CORS dla Vite
 > (`http://localhost:5173`, nadpisywalny przez `DARTS_CORS_ORIGINS`).
 
 ## 2. Frontend (React/Vite) — użyj klienta
 
-Skopiuj `dartsClient.ts` i `useDartHits.ts` do swojego projektu (np. `src/lib/`).
-Adres backendu ustaw w `.env` Vite:
+Skopiuj `dartsClient.ts`, `useDartHits.ts` (oraz opcjonalnie `DartsCalibrator.tsx`
+i `DartsPanel.tsx`) do swojego projektu (np. `src/lib/`). Adres backendu w `.env`:
 
 ```
-VITE_DARTS_URL=http://localhost:8000
+VITE_DARTS_URL=http://localhost:8000        # lub .../darts jeśli router ma prefix
 ```
 
-Kalibracja i pojedynczy rzut:
+Kalibracja perspektywiczna (4 punkty) i pojedynczy rzut:
 
 ```tsx
 import { DartsClient, captureFrame } from "./lib/dartsClient";
 
 const darts = new DartsClient(); // czyta VITE_DARTS_URL
 
-// Klatki z podglądów kamer (elementy <video> ze strumieniem):
-const grab = () => ({
-  cam0: captureFrame(video0),
-  cam1: captureFrame(video1),
-  cam2: captureFrame(video2),
+// 4 punkty na kamerę: double 20/6/3/11 (piksele natywne klatki):
+await darts.calibrateFromPoints({
+  cam0: { image_size: [1280, 720], points: { "20": [x,y], "6": [x,y], "3": [x,y], "11": [x,y] } },
+  cam1: { /* ... */ },
+  cam2: { /* ... */ },
 });
 
-await darts.calibrate(grab());                 // raz, na pustej tarczy
-const hit = await darts.scoreThrow(before, grab()); // { sector, ring, score, ... }
+const hit = await darts.scoreThrow(before, {
+  cam0: captureFrame(video0), cam1: captureFrame(video1), cam2: captureFrame(video2),
+}); // { sector, ring, score, ... }
 ```
+
+Gotowy ekran klikania: **`DartsCalibrator.tsx`** (klikasz 20/6/3/11 na każdej
+kamerze, on sam woła `calibrateFromPoints`). Zintegrowany w `DartsPanel.tsx`
+pod przyciskiem „Kalibruj (4 punkty)".
 
 Trafienia na żywo (hook):
 
@@ -86,9 +101,9 @@ function Scoreboard() {
 
 ## Gotowy komponent (opcjonalnie)
 
-`DartsPanel.tsx` to samowystarczalny przykład: podgląd 3 kamer, przycisk
-kalibracji, „klatka PRZED" + „Policz rzut" oraz tablica trafień na żywo
-(`useDartHits`). Skopiuj go i podmień style/logikę pod siebie.
+`DartsPanel.tsx` to samowystarczalny przykład: podgląd 3 kamer, kalibracja
+4-punktowa (przez `DartsCalibrator.tsx`), „klatka PRZED" + „Policz rzut" oraz
+tablica trafień na żywo (`useDartHits`). Skopiuj i podmień style/logikę pod siebie.
 
 ```tsx
 import { DartsPanel } from "./lib/DartsPanel";
@@ -105,5 +120,7 @@ Metody rzucają `DartsServiceError` z polem `.status`:
 ## Pliki do podesłania Claude Code (dla apki React/FastAPI)
 
 - Backend: `service/router.py`, `service/schemas.py`,
-- Front: `integration/react/dartsClient.ts`, `integration/react/useDartHits.ts`,
+  `dartscore/calibration/point_calibrator.py`,
+- Front: `integration/react/dartsClient.ts`, `useDartHits.ts`,
+  `DartsCalibrator.tsx`, `DartsPanel.tsx`,
 - ten `README.md`.

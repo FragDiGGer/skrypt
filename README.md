@@ -132,12 +132,16 @@ app.include_router(create_darts_router(prefix="/darts"))
 
 Endpointy (obrazy jako base64 w JSON):
 
-| Metoda | Ścieżka                     | Wejście                          | Wyjście            |
-|--------|-----------------------------|----------------------------------|--------------------|
-| POST   | `/darts/calibrate`          | `{frames: {camId: base64}}`      | status kalibracji  |
-| GET    | `/darts/calibration/status` | —                                | stan kalibracji    |
-| POST   | `/darts/score-throw`        | `{before: {...}, after: {...}}` | `Hit` JSON         |
-| WS     | `/darts/ws/hits`            | (utrzymywane połączenie)         | strumień `Hit`     |
+| Metoda | Ścieżka                     | Wejście                                  | Wyjście            |
+|--------|-----------------------------|------------------------------------------|--------------------|
+| POST   | `/darts/calibrate-points`   | `{cameras:{camId:{image_size,points}}}` | status kalibracji  |
+| POST   | `/darts/calibrate`          | `{frames: {camId: base64}}` (auto)       | status kalibracji  |
+| GET    | `/darts/calibration/status` | —                                        | stan kalibracji    |
+| POST   | `/darts/score-throw`        | `{before: {...}, after: {...}}`         | `Hit` JSON         |
+| WS     | `/darts/ws/hits`            | (utrzymywane połączenie)                 | strumień `Hit`     |
+
+Dla realnych kamer bocznych (perspektywa) używaj **`/darts/calibrate-points`**
+(4 punkty: double 20/6/3/11) — patrz `integration/react/README.md`.
 
 **Frontend (React/Vite) — użyj klienta** `integration/react/dartsClient.ts`
 (+ hook `useDartHits.ts`, + `captureFrame(video)` do pobrania klatki z `<video>`):

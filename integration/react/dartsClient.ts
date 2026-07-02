@@ -33,6 +33,16 @@ export interface CalibrationStatus {
 
 export type Frames = Record<string, string>; // camId -> base64 (PNG/JPEG)
 
+/** Punkty odniesienia jednej kamery do kalibracji perspektywicznej. */
+export interface CameraPoints {
+  image_size: [number, number];            // [width, height] klatki natywnej
+  points: Record<string, [number, number]>; // etykieta -> [x_px, y_px]; np. "20","6","3","11"
+}
+export type PointsCalibration = Record<string, CameraPoints>; // camId -> punkty
+
+/** Kolejność klikania punktów w UI: double 20, 6, 3, 11 (osie góra/prawo/dół/lewo). */
+export const REFERENCE_LABELS = ["20", "6", "3", "11"] as const;
+
 /** Błąd serwisu z kodem HTTP (409 brak kalibracji, 422 niejednoznaczne, 503 kamera offline). */
 export class DartsServiceError extends Error {
   status: number;
@@ -87,9 +97,17 @@ export class DartsClient {
     return this.request("GET", "/calibration/status");
   }
 
-  /** Kalibracja z klatek pustej tarczy (camId -> base64). */
+  /** Kalibracja automatyczna z klatek pustej tarczy (widok ~czołowy / syntetyk). */
   calibrate(frames: Frames): Promise<CalibrationStatus> {
     return this.request("POST", "/calibrate", { frames });
+  }
+
+  /**
+   * Kalibracja perspektywiczna z klikanych punktów (ZALECANA dla realnych kamer
+   * bocznych). Domyślnie 4 punkty: zewnętrzna krawędź double dla sektorów 20/6/3/11.
+   */
+  calibrateFromPoints(cameras: PointsCalibration): Promise<CalibrationStatus> {
+    return this.request("POST", "/calibrate-points", { cameras });
   }
 
   /** Punktacja rzutu z klatek przed/po (camId -> base64). */
@@ -142,4 +160,23 @@ export function captureFrame(video: HTMLVideoElement): string {
   ctx.drawImage(video, 0, 0);
   // Zwracamy samo base64 (bez prefiksu data:) — backend przyjmuje oba warianty.
   return canvas.toDataURL("image/png").split(",", 2)[1];
+}
+
+/**
+ * Zamroź bieżącą klatkę z <video> jako dataURL + wymiary natywne.
+ * Używane w ekranie kalibracji: pokazujesz zdjęcie i zbierasz kliknięcia w px
+ * natywnych (te same, w których backend dostaje klatki do punktacji).
+ */
+export function captureFrameDataUrl(video: HTMLVideoElement): {
+  dataUrl: string;
+  width: number;
+  height: number;
+} {
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Brak kontekstu 2D canvas");
+  ctx.drawImage(video, 0, 0);
+  return { dataUrl: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height };
 }

@@ -10,7 +10,15 @@
 // identyfikatory przez prop `deviceIds` (kolejność = cam0, cam1, cam2).
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { DartsClient, DartsServiceError, captureFrame, type Frames, type Hit } from "./dartsClient";
+import {
+  DartsClient,
+  DartsServiceError,
+  captureFrame,
+  captureFrameDataUrl,
+  type Frames,
+  type Hit,
+} from "./dartsClient";
+import { DartsCalibrator, type FrozenFrame } from "./DartsCalibrator";
 import { useDartHits } from "./useDartHits";
 
 const CAM_IDS = ["cam0", "cam1", "cam2"] as const;
@@ -29,6 +37,7 @@ export function DartsPanel({ client, deviceIds }: DartsPanelProps) {
   const [calibrated, setCalibrated] = useState(false);
   const [before, setBefore] = useState<Frames | null>(null);
   const [busy, setBusy] = useState(false);
+  const [frozen, setFrozen] = useState<Record<string, FrozenFrame> | null>(null);
 
   const { lastHit, hits, connected } = useDartHits(darts);
 
@@ -89,12 +98,16 @@ export function DartsPanel({ client, deviceIds }: DartsPanelProps) {
     }
   };
 
-  const onCalibrate = () =>
-    withBusy(async () => {
-      const res = await darts.calibrate(captureAll());
-      setCalibrated(true);
-      setStatus(`Skalibrowano. Offset sektora 20: ${res.sector20_offset_deg?.toFixed(1)}°`);
+  // Kalibracja perspektywiczna (4 punkty): zamroź klatki z 3 kamer i otwórz ekran klikania.
+  const onCalibrate = () => {
+    const snap: Record<string, FrozenFrame> = {};
+    CAM_IDS.forEach((cid, i) => {
+      const v = videoRefs.current[i];
+      if (v && v.videoWidth) snap[cid] = captureFrameDataUrl(v);
     });
+    setFrozen(snap);
+    setStatus("Kalibracja: kliknij double 20/6/3/11 na każdej kamerze.");
+  };
 
   const onCaptureBefore = () =>
     withBusy(async () => {
@@ -111,6 +124,21 @@ export function DartsPanel({ client, deviceIds }: DartsPanelProps) {
     });
 
   // --- render -------------------------------------------------------------
+  if (frozen) {
+    return (
+      <DartsCalibrator
+        client={darts}
+        frames={frozen}
+        onDone={() => {
+          setCalibrated(true);
+          setFrozen(null);
+          setStatus("Skalibrowano (4 punkty). Gotowe do gry.");
+        }}
+        onCancel={() => setFrozen(null)}
+      />
+    );
+  }
+
   return (
     <div style={S.wrap}>
       <div style={S.row}>
@@ -129,7 +157,7 @@ export function DartsPanel({ client, deviceIds }: DartsPanelProps) {
       </div>
 
       <div style={S.bar}>
-        <button onClick={onCalibrate} disabled={busy} style={S.btn}>Kalibruj (pusta tarcza)</button>
+        <button onClick={onCalibrate} disabled={busy} style={S.btn}>Kalibruj (4 punkty)</button>
         <button onClick={onCaptureBefore} disabled={busy || !calibrated} style={S.btn}>Zapisz klatkę PRZED</button>
         <button onClick={onScoreThrow} disabled={busy || !calibrated} style={S.btnPrimary}>Policz rzut</button>
         <span style={S.dot(connected)}>{connected ? "● live" : "○ offline"}</span>

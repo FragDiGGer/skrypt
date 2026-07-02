@@ -29,6 +29,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from dartscore.config import BoardConfig, load_board_config, load_cameras_config
 from dartscore.calibration.board_calibrator import BoardCalibrator
+from dartscore.calibration.point_calibrator import build_calibration_from_points
 from dartscore.calibration.store import Calibration, save_calibration, load_calibration
 from dartscore.pipeline import ThrowPipeline, ThrowResult
 from dartscore.errors import (
@@ -38,7 +39,14 @@ from dartscore.errors import (
     AmbiguousHit,
     NotCalibrated,
 )
-from .schemas import ThrowRequest, FrameSet, HitResponse, Position, CalibrationResponse
+from .schemas import (
+    ThrowRequest,
+    FrameSet,
+    HitResponse,
+    Position,
+    CalibrationResponse,
+    PointsCalibrationRequest,
+)
 
 
 class DartsService:
@@ -76,6 +84,16 @@ class DartsService:
 
     def calibrate(self, images: dict[str, np.ndarray]) -> Calibration:
         calib = BoardCalibrator(self.board).calibrate(images)
+        return self._store_calibration(calib)
+
+    def calibrate_from_points(
+        self, cameras: dict[str, tuple[tuple[int, int], dict[str, tuple[float, float]]]]
+    ) -> Calibration:
+        """Kalibracja perspektywiczna z klikanych punktów (zalecana dla realnych kamer)."""
+        calib = build_calibration_from_points(self.board, cameras)
+        return self._store_calibration(calib)
+
+    def _store_calibration(self, calib: Calibration) -> Calibration:
         save_calibration(calib, self.calibration_path)
         self.pipeline = ThrowPipeline(self.board, calib, cameras=self._try_load_cameras())
         return calib
@@ -181,6 +199,24 @@ def create_darts_router(
             sector20_offset_deg=calib.sector20_offset_deg,
             cameras=list(calib.cameras.keys()),
             message="Kalibracja zapisana",
+        )
+
+    @router.post("/calibrate-points", response_model=CalibrationResponse)
+    def calibrate_points(payload: PointsCalibrationRequest) -> CalibrationResponse:
+        """Kalibracja perspektywiczna z klikanych punktów (double 20/6/3/11)."""
+        cameras = {
+            cid: (tuple(cp.image_size), {k: tuple(v) for k, v in cp.points.items()})
+            for cid, cp in payload.cameras.items()
+        }
+        try:
+            calib = svc.calibrate_from_points(cameras)
+        except DartScoreError as exc:
+            raise to_http(exc)
+        return CalibrationResponse(
+            calibrated=True,
+            sector20_offset_deg=calib.sector20_offset_deg,
+            cameras=list(calib.cameras.keys()),
+            message="Kalibracja (4 punkty) zapisana",
         )
 
     @router.post("/score-throw", response_model=HitResponse)
