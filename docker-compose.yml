@@ -1,6 +1,9 @@
-# Uruchamia serwis wizyjny dartscore (Python/FastAPI) jako osobny kontener.
-# Aplikacja Node.js (Twoja) woła go po HTTP/WS pod adresem http://dartscore:8000
-# (wewnątrz sieci compose) lub http://localhost:8000 (z hosta).
+# Uruchamia serwis wizyjny dartscore jako OSOBNY kontener (wariant alternatywny).
+#
+# Uwaga: jeśli Twój backend to Python/FastAPI, zwykle NIE potrzebujesz tego —
+# wepnij router bezpośrednio (service/router.py -> app.include_router(...)).
+# Ten compose jest przydatny, gdy chcesz dartscore jako niezależny proces; Twoja
+# apka woła go pod http://dartscore:8000 (sieć compose) lub http://localhost:8000.
 #
 # Start:  docker compose up --build
 services:
@@ -18,13 +21,13 @@ services:
       DARTSCORE_CALIBRATION: /data/calibration.json
     restart: unless-stopped
 
-  # --- PRZYKŁAD: tu dołącz swoją usługę Node.js -----------------------------
-  # node-app:
-  #   build: ./path-do-twojej-apki-node
+  # --- PRZYKŁAD: tu dołącz swój backend (np. FastAPI), jeśli go konteneryzujesz -
+  # backend:
+  #   build: ./path-do-twojego-backendu
   #   ports:
-  #     - "3000:3000"
+  #     - "8080:8080"
   #   environment:
-  #     # Klient Node (integration/node/dartsClient.js) czyta ten adres.
+  #     # Adres serwisu wizyjnego, gdy wołasz go po HTTP zamiast wpinać router.
   #     DARTS_SERVICE_URL: http://dartscore:8000
   #   depends_on:
   #     - dartscore

@@ -117,52 +117,42 @@ Konfigurację kamer opisuje `config/cameras.yaml` (skopiuj z
 `cameras.example.yaml`): id/indeks, rozdzielczość, azymut, minimalna liczba
 kamer dla pewnego trafienia.
 
-## Wpięcie do aplikacji webowej (backend Node/JS)
+## Wpięcie do aplikacji webowej (React/Vite + FastAPI)
 
-Uruchom serwis wizyjny (Python) obok swojego backendu:
+Stack docelowy: **frontend React/Vite** + **backend Python/FastAPI**. Ponieważ
+`dartscore` też jest w Pythonie, wpinasz go **wprost do swojego backendu FastAPI**
+— bez osobnego mikroserwisu. Pełny przewodnik: **`integration/react/README.md`**.
 
-```bash
-uvicorn service.api:app --host 0.0.0.0 --port 8000
+**Backend (FastAPI) — wepnij router:**
+
+```python
+from service.router import create_darts_router
+app.include_router(create_darts_router(prefix="/darts"))
 ```
 
-Albo przez Docker (serwis jako osobny kontener obok apki Node):
+Endpointy (obrazy jako base64 w JSON):
 
-```bash
-docker compose up --build      # http://localhost:8000
+| Metoda | Ścieżka                     | Wejście                          | Wyjście            |
+|--------|-----------------------------|----------------------------------|--------------------|
+| POST   | `/darts/calibrate`          | `{frames: {camId: base64}}`      | status kalibracji  |
+| GET    | `/darts/calibration/status` | —                                | stan kalibracji    |
+| POST   | `/darts/score-throw`        | `{before: {...}, after: {...}}` | `Hit` JSON         |
+| WS     | `/darts/ws/hits`            | (utrzymywane połączenie)         | strumień `Hit`     |
+
+**Frontend (React/Vite) — użyj klienta** `integration/react/dartsClient.ts`
+(+ hook `useDartHits.ts`, + `captureFrame(video)` do pobrania klatki z `<video>`):
+
+```tsx
+import { DartsClient } from "./lib/dartsClient";
+const darts = new DartsClient();               // czyta VITE_DARTS_URL
+const hit = await darts.scoreThrow(before, after);   // { sector, ring, score, ... }
 ```
 
-Gotowy klient dla Node.js jest w **`integration/node/dartsClient.js`**
-(funkcje `calibrate`, `scoreThrow`, `subscribeHits`) — szczegóły w
-`integration/node/README.md`. **To są pliki do podesłania Claude Code**, gdy
-wpinasz moduł w swoją aplikację Node.
+> **Pliki do podesłania Claude Code** (dla apki React/FastAPI): backend —
+> `service/router.py`, `service/schemas.py`; front — `integration/react/*`.
 
-Backend Node/JS woła endpointy (obrazy jako base64 w JSON):
-
-| Metoda | Ścieżka                | Wejście                          | Wyjście                     |
-|--------|------------------------|----------------------------------|-----------------------------|
-| POST   | `/calibrate`           | `{frames: {camId: base64}}`      | status kalibracji + offset  |
-| GET    | `/calibration/status`  | —                                | stan kalibracji             |
-| POST   | `/score-throw`         | `{before: {...}, after: {...}}`  | `Hit` JSON                  |
-| WS     | `/ws/hits`             | (utrzymywane połączenie)         | strumień `Hit` na żywo      |
-
-Przykład (Node/`fetch`):
-
-```js
-const res = await fetch("http://localhost:8000/score-throw", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ before, after }),   // { camId: base64PNG }
-});
-const hit = await res.json();
-// { sector: 20, ring: "triple", multiplier: 3, score: 60, confidence: 0.92, ... }
-```
-
-Trafienia na żywo (WebSocket):
-
-```js
-const ws = new WebSocket("ws://localhost:8000/ws/hits");
-ws.onmessage = (e) => console.log("trafienie:", JSON.parse(e.data));
-```
+**Alternatywa — osobny proces** (gdy nie chcesz wpinać routera): uruchom
+`uvicorn service.api:app` (ma włączony CORS dla Vite) albo `docker compose up`.
 
 Każde `POST /score-throw` rozsyła wynik również do klientów `/ws/hits`.
 
