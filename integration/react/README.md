@@ -112,6 +112,17 @@ export default function App() {
 }
 ```
 
+## Weryfikacja i dystorsja
+
+- **Podgląd kalibracji:** po zapisaniu punktów `DartsCalibrator` woła
+  `POST /darts/calibration/preview` i pokazuje klatkę z nałożoną **siatką tarczy**
+  (pierścienie + sektory + numery). Siatka powinna pokrywać się z realną tarczą —
+  jeśli nie, „Popraw punkty".
+- **Korekcja dystorsji (opcjonalna):** dla kamer szerokokątnych (beczka) zrób
+  10–20 zdjęć szachownicy z każdej kamery i wywołaj `client.calibrateLens({cam0:[...], ...})`
+  **przed** kalibracją 4-punktową. Moduł prostuje obraz przed detekcją i kalibracją
+  (parametry zapisywane w `lens.json`; endpoint `POST /darts/calibrate-lens`).
+
 ## 3. Błędy
 
 Metody rzucają `DartsServiceError` z polem `.status`:

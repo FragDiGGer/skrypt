@@ -37,6 +37,29 @@ class PointsCalibrationRequest(BaseModel):
     cameras: dict[str, CameraPoints]
 
 
+class PreviewRequest(BaseModel):
+    """Podgląd kalibracji: nałóż siatkę tarczy na klatkę danej kamery."""
+
+    camera_id: str
+    frame: str = Field(..., description="Klatka kamery jako base64 (PNG/JPEG)")
+
+
+class PreviewResponse(BaseModel):
+    image: str = Field(..., description="Obraz z nałożoną siatką (base64 PNG)")
+
+
+class LensCalibrationRequest(BaseModel):
+    """Kalibracja dystorsji: zdjęcia szachownicy per kamera (base64)."""
+
+    cameras: dict[str, list[str]] = Field(..., description="camera_id -> lista klatek base64 z szachownicą")
+    pattern_size: tuple[int, int] = Field((9, 6), description="Liczba wewn. rogów szachownicy [kolumny, wiersze]")
+
+
+class LensCalibrationResponse(BaseModel):
+    cameras: list[str]
+    message: str
+
+
 class Position(BaseModel):
     angle_deg: float
     radius_mm: float

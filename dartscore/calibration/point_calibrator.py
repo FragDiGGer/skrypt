@@ -16,7 +16,7 @@ dopasowana metodą najmniejszych kwadratów (cv2.findHomography).
 
 from __future__ import annotations
 
-from typing import Mapping, Sequence
+from typing import Mapping, Optional, Sequence
 
 import numpy as np
 
@@ -24,6 +24,7 @@ from ..config import BoardConfig
 from ..errors import BoardNotDetected
 from ..geometry import polar_to_cartesian, sector_center_angle
 from .homography import find_homography_image_to_board, board_to_image
+from .lens import LensIntrinsics, undistort_points
 from .store import Calibration, CameraCalibration
 
 # Domyślny zestaw punktów: double 20/6/3/11 (osie 0/90/180/270°).
@@ -69,8 +70,18 @@ def calibrate_camera_from_points(
     image_points: Mapping[str, Sequence[float]],
     board: BoardConfig,
     radius_mm: float | None = None,
+    intrinsics: Optional[LensIntrinsics] = None,
 ) -> CameraCalibration:
-    """Zbuduj CameraCalibration dla jednej kamery z klikanych punktów."""
+    """Zbuduj CameraCalibration dla jednej kamery z klikanych punktów.
+
+    Jeśli podano intrinsics, klikane punkty (z obrazu zdystortowanego) są
+    prostowane przed liczeniem homografii — homografia działa wtedy w przestrzeni
+    obrazu wyprostowanego, tak samo jak później detekcja rzutów.
+    """
+    if intrinsics is not None:
+        labels = list(image_points.keys())
+        undist = undistort_points(np.array([image_points[l] for l in labels]), intrinsics)
+        image_points = {l: tuple(undist[i]) for i, l in enumerate(labels)}
     h = homography_from_points(image_points, board, radius_mm)
     # Środek tarczy (bull) w obrazie = obraz punktu (0,0) przez homografię.
     center_px = board_to_image(h, (0.0, 0.0))
@@ -83,6 +94,8 @@ def calibrate_camera_from_points(
         center_px=(float(center_px[0]), float(center_px[1])),
         px_per_mm=px_per_mm,
         image_size=(int(image_size[0]), int(image_size[1])),
+        camera_matrix=intrinsics.camera_matrix if intrinsics else None,
+        dist_coeffs=intrinsics.dist_coeffs if intrinsics else None,
     )
 
 
@@ -90,19 +103,22 @@ def build_calibration_from_points(
     board: BoardConfig,
     cameras: Mapping[str, tuple[tuple[int, int], Mapping[str, Sequence[float]]]],
     radius_mm: float | None = None,
+    intrinsics: Optional[Mapping[str, LensIntrinsics]] = None,
 ) -> Calibration:
     """Zbuduj pełną Calibration z punktów dla wielu kamer.
 
     Args:
         cameras: mapa camera_id -> ((width, height), {etykieta: (x_px, y_px)}).
+        intrinsics: opcjonalna mapa camera_id -> LensIntrinsics (korekcja dystorsji).
 
     Orientacja jest zakodowana w homografii (20 na osi 0°), więc
     `sector20_offset_deg = 0`.
     """
     if not cameras:
         raise BoardNotDetected("Brak kamer do kalibracji punktowej")
+    intr = intrinsics or {}
     cam_calibs = {
-        cid: calibrate_camera_from_points(cid, size, pts, board, radius_mm)
+        cid: calibrate_camera_from_points(cid, size, pts, board, radius_mm, intr.get(cid))
         for cid, (size, pts) in cameras.items()
     }
     return Calibration(

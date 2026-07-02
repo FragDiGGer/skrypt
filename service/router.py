@@ -30,6 +30,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from dartscore.config import BoardConfig, load_board_config, load_cameras_config
 from dartscore.calibration.board_calibrator import BoardCalibrator
 from dartscore.calibration.point_calibrator import build_calibration_from_points
+from dartscore.calibration.lens import LensIntrinsics, calibrate_lens, undistort_image
 from dartscore.calibration.store import Calibration, save_calibration, load_calibration
 from dartscore.pipeline import ThrowPipeline, ThrowResult
 from dartscore.errors import (
@@ -46,7 +47,12 @@ from .schemas import (
     Position,
     CalibrationResponse,
     PointsCalibrationRequest,
+    PreviewRequest,
+    PreviewResponse,
+    LensCalibrationRequest,
+    LensCalibrationResponse,
 )
+from dartscore.calibration.overlay import draw_board_overlay
 
 
 class DartsService:
@@ -64,10 +70,32 @@ class DartsService:
         self.calibration_path = Path(
             calibration_path or os.environ.get("DARTSCORE_CALIBRATION", "calibration.json")
         )
+        self.lens_path = Path(os.environ.get("DARTSCORE_LENS", "lens.json"))
         self.board = board or load_board_config()
         self.pipeline: Optional[ThrowPipeline] = None
         self.ws_clients: set[WebSocket] = set()
+        self.lens_intrinsics: dict[str, LensIntrinsics] = self._load_lens()
         self._load_pipeline_if_available()
+
+    def _load_lens(self) -> dict[str, LensIntrinsics]:
+        if not self.lens_path.exists():
+            return {}
+        import json
+
+        data = json.loads(self.lens_path.read_text(encoding="utf-8"))
+        return {cid: LensIntrinsics(**v) for cid, v in data.items()}
+
+    def calibrate_lens_cameras(self, images: dict[str, list[np.ndarray]], pattern_size) -> list[str]:
+        """Wyznacz intrinsics per kamera ze zdjęć szachownicy i zapisz do lens.json."""
+        import json
+
+        for cid, imgs in images.items():
+            self.lens_intrinsics[cid] = calibrate_lens(imgs, pattern_size=pattern_size)
+        self.lens_path.write_text(
+            json.dumps({cid: intr.__dict__ for cid, intr in self.lens_intrinsics.items()}, indent=2),
+            encoding="utf-8",
+        )
+        return list(images.keys())
 
     # -- zarządzanie stanem --------------------------------------------------
 
@@ -90,7 +118,7 @@ class DartsService:
         self, cameras: dict[str, tuple[tuple[int, int], dict[str, tuple[float, float]]]]
     ) -> Calibration:
         """Kalibracja perspektywiczna z klikanych punktów (zalecana dla realnych kamer)."""
-        calib = build_calibration_from_points(self.board, cameras)
+        calib = build_calibration_from_points(self.board, cameras, intrinsics=self.lens_intrinsics or None)
         return self._store_calibration(calib)
 
     def _store_calibration(self, calib: Calibration) -> Calibration:
@@ -201,6 +229,22 @@ def create_darts_router(
             message="Kalibracja zapisana",
         )
 
+    @router.post("/calibrate-lens", response_model=LensCalibrationResponse)
+    def calibrate_lens_endpoint(payload: LensCalibrationRequest) -> LensCalibrationResponse:
+        """Wyznacz korekcję dystorsji per kamera ze zdjęć szachownicy (krok opcjonalny).
+
+        Wykonaj PRZED kalibracją 4-punktową, aby punkty i detekcja liczyły się w
+        obrazie wyprostowanym.
+        """
+        images = {cid: [decode_image(b) for b in frames] for cid, frames in payload.cameras.items()}
+        try:
+            done = svc.calibrate_lens_cameras(images, tuple(payload.pattern_size))
+        except DartScoreError as exc:
+            raise to_http(exc)
+        return LensCalibrationResponse(
+            cameras=done, message="Zapisano korekcję dystorsji; teraz wykonaj kalibrację 4-punktową."
+        )
+
     @router.post("/calibrate-points", response_model=CalibrationResponse)
     def calibrate_points(payload: PointsCalibrationRequest) -> CalibrationResponse:
         """Kalibracja perspektywiczna z klikanych punktów (double 20/6/3/11)."""
@@ -228,6 +272,24 @@ def create_darts_router(
         response = result_to_response(result)
         await svc.broadcast(response)
         return response
+
+    @router.post("/calibration/preview", response_model=PreviewResponse)
+    def calibration_preview(payload: PreviewRequest) -> PreviewResponse:
+        """Zwróć klatkę z nałożoną siatką tarczy (weryfikacja kalibracji wzrokowo)."""
+        if svc.pipeline is None:
+            raise HTTPException(status_code=409, detail="Brak kalibracji — najpierw skalibruj")
+        cam = svc.pipeline.calibration.cameras.get(payload.camera_id)
+        if cam is None:
+            raise HTTPException(status_code=404, detail=f"Brak kalibracji kamery '{payload.camera_id}'")
+        image = decode_image(payload.frame)
+        intr = cam.intrinsics()
+        if intr is not None:  # homografia jest w przestrzeni obrazu wyprostowanego
+            image = undistort_image(image, intr)
+        overlaid = draw_board_overlay(image, cam.homography_matrix(), svc.pipeline.board)
+        ok, buf = cv2.imencode(".png", overlaid)
+        if not ok:
+            raise HTTPException(status_code=500, detail="Nie udało się zakodować podglądu")
+        return PreviewResponse(image=base64.b64encode(buf).decode())
 
     @router.websocket("/ws/hits")
     async def ws_hits(ws: WebSocket) -> None:

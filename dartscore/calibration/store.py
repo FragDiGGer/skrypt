@@ -9,23 +9,38 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 
 
 @dataclass
 class CameraCalibration:
-    """Kalibracja jednej kamery: homografia obraz->tarcza (mm) + metadane."""
+    """Kalibracja jednej kamery: homografia obraz->tarcza (mm) + metadane.
+
+    Homografia jest wyrażona we współrzędnych obrazu WYPROSTOWANEGO (po korekcji
+    dystorsji), jeśli kamera ma intrinsics; inaczej w surowych px obrazu.
+    """
 
     camera_id: str
     homography: list[list[float]]           # 3x3, image px -> board mm
-    center_px: tuple[float, float]          # wykryty środek tarczy w px
+    center_px: tuple[float, float]          # środek tarczy (bull) w px
     px_per_mm: float                        # przybliżona skala (diagnostyka)
     image_size: tuple[int, int]             # (width, height)
+    # Opcjonalne parametry dystorsji (włączają prostowanie obrazu przed detekcją).
+    camera_matrix: Optional[list[list[float]]] = None
+    dist_coeffs: Optional[list[float]] = None
 
     def homography_matrix(self) -> np.ndarray:
         return np.asarray(self.homography, dtype=np.float64)
+
+    def intrinsics(self):
+        """Zwróć LensIntrinsics albo None, jeśli kamera nie ma korekcji dystorsji."""
+        if self.camera_matrix is None or self.dist_coeffs is None:
+            return None
+        from .lens import LensIntrinsics
+
+        return LensIntrinsics(camera_matrix=self.camera_matrix, dist_coeffs=self.dist_coeffs)
 
 
 @dataclass
@@ -64,6 +79,8 @@ def load_calibration(path: str | Path) -> Calibration:
             center_px=tuple(cc["center_px"]),  # type: ignore[arg-type]
             px_per_mm=float(cc["px_per_mm"]),
             image_size=tuple(cc["image_size"]),  # type: ignore[arg-type]
+            camera_matrix=cc.get("camera_matrix"),
+            dist_coeffs=cc.get("dist_coeffs"),
         )
         for cid, cc in data["cameras"].items()
     }

@@ -60,23 +60,36 @@ class ThrowPipeline:
         self._backgrounds: dict[str, BackgroundModel] = {
             cid: BackgroundModel() for cid in calibration.cameras
         }
+        # Intrinsics per kamera (korekcja dystorsji); None => brak prostowania.
+        self._intrinsics = {cid: cc.intrinsics() for cid, cc in calibration.cameras.items()}
 
     # -- API strumieniowe ----------------------------------------------------
+
+    def _prep(self, cid: str, frame: np.ndarray) -> np.ndarray:
+        """Wyprostuj klatkę, jeśli kamera ma korekcję dystorsji (inaczej bez zmian)."""
+        intr = self._intrinsics.get(cid)
+        if intr is None:
+            return frame
+        from .calibration.lens import undistort_image
+
+        return undistort_image(frame, intr)
 
     def set_reference(self, frames: dict[str, np.ndarray]) -> None:
         """Ustaw stan odniesienia (tarcza sprzed rzutu) dla każdej kamery."""
         for cid, frame in frames.items():
             if cid in self._backgrounds and frame is not None:
-                self._backgrounds[cid].reset(frame)
+                self._backgrounds[cid].reset(self._prep(cid, frame))
 
     def process_throw(self, frames: dict[str, np.ndarray]) -> ThrowResult:
         """Przetwórz klatki po trafieniu i zwróć wynik rzutu."""
-        observations = self._collect_observations(frames)
+        # Prostowanie dystorsji (jeśli włączone) — spójne z przestrzenią homografii.
+        prepped = {cid: self._prep(cid, f) for cid, f in frames.items() if f is not None}
+        observations = self._collect_observations(prepped)
         fused = fuse_observations(observations, min_cameras=self.min_cameras)
         hit = score(fused.angle_deg, fused.radius_mm, self.board)
         # Po odczycie aktualizujemy tło do nowego stanu (z wbitą lotką).
-        for cid, frame in frames.items():
-            if cid in self._backgrounds and frame is not None:
+        for cid, frame in prepped.items():
+            if cid in self._backgrounds:
                 self._backgrounds[cid].update(frame)
         return ThrowResult(hit=hit, fused=fused)
 

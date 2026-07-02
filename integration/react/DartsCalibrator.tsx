@@ -36,6 +36,7 @@ export function DartsCalibrator({ client, frames, onDone, onCancel }: DartsCalib
   );
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [previews, setPreviews] = useState<Record<string, string> | null>(null);
 
   const cam = camIds[camIdx];
   const frame = frames[cam];
@@ -66,9 +67,16 @@ export function DartsCalibrator({ client, frames, onDone, onCancel }: DartsCalib
           points: Object.fromEntries(REFERENCE_LABELS.map((lab, i) => [lab, pts[i]])),
         };
       }
-      const res = await client.calibrateFromPoints(payload);
-      setStatus(`Zapisano kalibrację (offset 20 = ${res.sector20_offset_deg ?? 0}°).`);
-      onDone?.();
+      await client.calibrateFromPoints(payload);
+      // Weryfikacja wzrokowa: nałóż siatkę tarczy na każdą zamrożoną klatkę.
+      const previewEntries = await Promise.all(
+        camIds.map(async (c) => {
+          const b64 = frames[c].dataUrl.split(",", 2)[1];
+          return [c, "data:image/png;base64," + (await client.calibrationPreview(c, b64))] as const;
+        }),
+      );
+      setPreviews(Object.fromEntries(previewEntries));
+      setStatus("Zapisano. Sprawdź, czy siatka pokrywa się z tarczą; jak nie — cofnij i popraw punkty.");
     } catch (e) {
       setStatus(
         e instanceof DartsServiceError ? `Błąd (${e.status}): ${e.detail}` : "Błąd: " + (e as Error).message,
@@ -77,6 +85,31 @@ export function DartsCalibrator({ client, frames, onDone, onCancel }: DartsCalib
       setBusy(false);
     }
   };
+
+  // Widok weryfikacji: pokaż nałożoną siatkę i pozwól zaakceptować lub poprawić.
+  if (previews) {
+    return (
+      <div style={S.wrap}>
+        <div style={S.head}>
+          <strong>Weryfikacja kalibracji</strong>
+          <span style={S.hint}>Siatka powinna pokrywać się z tarczą na każdej kamerze.</span>
+        </div>
+        <div style={S.row}>
+          {camIds.map((c) => (
+            <div key={c} style={S.previewCell}>
+              <img src={previews[c]} style={S.img} alt={`podgląd ${c}`} />
+              <span style={S.camLabel}>{c}</span>
+            </div>
+          ))}
+        </div>
+        <div style={S.bar}>
+          <button onClick={() => setPreviews(null)} style={S.btn}>Popraw punkty</button>
+          <button onClick={() => onDone?.()} style={S.btnPrimary}>Akceptuj kalibrację</button>
+        </div>
+        <p style={S.status}>{status}</p>
+      </div>
+    );
+  }
 
   return (
     <div style={S.wrap}>
@@ -139,4 +172,7 @@ const S: Record<string, any> = {
   btnPrimary: { padding: "8px 12px", borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", cursor: "pointer" },
   status: { color: "#444", minHeight: 20 },
   legend: { color: "#777", fontSize: 13 },
+  row: { display: "flex", gap: 8 },
+  previewCell: { position: "relative", flex: 1, border: "1px solid #ccc", borderRadius: 8, overflow: "hidden", lineHeight: 0 },
+  camLabel: { position: "absolute", top: 6, left: 8, color: "#fff", fontSize: 12, textShadow: "0 0 3px #000" },
 };

@@ -110,9 +110,32 @@ export class DartsClient {
     return this.request("POST", "/calibrate-points", { cameras });
   }
 
+  /**
+   * OPCJONALNIE: korekcja dystorsji obiektywu ze zdjęć szachownicy (per kamera).
+   * Wykonaj PRZED calibrateFromPoints. `cameras`: camId -> lista klatek base64.
+   */
+  calibrateLens(
+    cameras: Record<string, string[]>,
+    patternSize: [number, number] = [9, 6],
+  ): Promise<{ cameras: string[]; message: string }> {
+    return this.request("POST", "/calibrate-lens", { cameras, pattern_size: patternSize });
+  }
+
   /** Punktacja rzutu z klatek przed/po (camId -> base64). */
   scoreThrow(before: Frames, after: Frames): Promise<Hit> {
     return this.request("POST", "/score-throw", { before, after });
+  }
+
+  /**
+   * Podgląd kalibracji: nakłada siatkę tarczy na klatkę danej kamery.
+   * Zwraca obraz base64 (PNG) — pokaż go, by naocznie zweryfikować dopasowanie.
+   */
+  async calibrationPreview(cameraId: string, frame: string): Promise<string> {
+    const res = await this.request<{ image: string }>("POST", "/calibration/preview", {
+      camera_id: cameraId,
+      frame,
+    });
+    return res.image;
   }
 
   /**
